@@ -39,6 +39,21 @@ declare module "replicate" {
     };
   }
 
+  export interface FileObject {
+    id: string;
+    name: string;
+    content_type: string;
+    size: number;
+    etag: string;
+    checksum: string;
+    metadata: Record<string, any>;
+    created_at: string;
+    expires_at: string | null;
+    urls: {
+      get: string;
+    };
+  }
+
   export interface Hardware {
     sku: string;
     name: string;
@@ -119,12 +134,16 @@ declare module "replicate" {
         input: Request | string,
         init?: RequestInit
       ) => Promise<Response>;
+      prepareInputs?: (
+        input: Record<string, any>
+      ) => Promise<Record<string, any>>;
     });
 
     auth: string;
     userAgent?: string;
     baseUrl?: string;
     fetch: (input: Request | string, init?: RequestInit) => Promise<Response>;
+    prepareInputs: (input: Record<string, any>) => Promise<Record<string, any>>;
 
     run(
       identifier: `${string}/${string}` | `${string}/${string}:${string}`,
@@ -194,6 +213,16 @@ declare module "replicate" {
         deployment_owner: string,
         deployment_name: string
       ): Promise<Deployment>;
+    };
+
+    files: {
+      create: (
+        file: File | Blob,
+        metadata?: Record<string, string | number | boolean | null>
+      ) => Promise<FileObject>;
+      list: () => Promise<FileObject>;
+      get: (file_id: string) => Promise<FileObject>;
+      delete: (file_id: string) => Promise<FileObject>;
     };
 
     hardware: {
@@ -280,4 +309,9 @@ declare module "replicate" {
         },
     secret: string
   ): boolean;
+
+  export function transformFileInputs(
+    inputs: Record<string, any>,
+    options: { fallbackToDataURI: boolean }
+  ): Promise<Record<string, any>>;
 }

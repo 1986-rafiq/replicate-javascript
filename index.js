@@ -1,11 +1,17 @@
 const ApiError = require("./lib/error");
 const ModelVersionIdentifier = require("./lib/identifier");
 const { Stream } = require("./lib/stream");
-const { withAutomaticRetries, validateWebhook } = require("./lib/util");
+const {
+  withAutomaticRetries,
+  validateWebhook,
+  transformFileInputsToReplicateFileURLs,
+  transformFileInputsToBase64EncodedDataURIs,
+} = require("./lib/util");
 
 const accounts = require("./lib/accounts");
 const collections = require("./lib/collections");
 const deployments = require("./lib/deployments");
+const files = require("./lib/files");
 const hardware = require("./lib/hardware");
 const models = require("./lib/models");
 const predictions = require("./lib/predictions");
@@ -41,6 +47,7 @@ class Replicate {
    * @param {string} options.userAgent - Identifier of your app
    * @param {string} [options.baseUrl] - Defaults to https://api.replicate.com/v1
    * @param {Function} [options.fetch] - Fetch function to use. Defaults to `globalThis.fetch`
+   * @param {Function} [options.prepareInput] - Function to prepare input data before sending it to the API.
    */
   constructor(options = {}) {
     this.auth = options.auth || process.env.REPLICATE_API_TOKEN;
@@ -48,6 +55,15 @@ class Replicate {
       options.userAgent || `replicate-javascript/${packageJSON.version}`;
     this.baseUrl = options.baseUrl || "https://api.replicate.com/v1";
     this.fetch = options.fetch || globalThis.fetch;
+    this.prepareInputs =
+      options.prepareInputs ||
+      (async (inputs) => {
+        try {
+          return await transformFileInputsToReplicateFileURLs(this, inputs);
+        } catch (error) {
+          return await transformFileInputsToBase64EncodedDataURIs(inputs);
+        }
+      });
 
     this.accounts = {
       current: accounts.current.bind(this),
@@ -63,6 +79,13 @@ class Replicate {
       predictions: {
         create: deployments.predictions.create.bind(this),
       },
+    };
+
+    this.files = {
+      create: files.create.bind(this),
+      list: files.list.bind(this),
+      get: files.get.bind(this),
+      delete: files.delete.bind(this),
     };
 
     this.hardware = {
@@ -218,10 +241,17 @@ class Replicate {
       }
     }
 
+    let body = undefined;
+    if (data instanceof FormData) {
+      body = data;
+    } else if (data) {
+      body = JSON.stringify(data);
+    }
+
     const init = {
       method,
       headers,
-      body: data ? JSON.stringify(data) : undefined,
+      body,
     };
 
     const shouldRetry =
